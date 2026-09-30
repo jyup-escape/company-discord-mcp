@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.*
+data
+test
+*.db
+*.db-wal
+*.db-shm
+setup-artifacts
+employee-kit
+.tools

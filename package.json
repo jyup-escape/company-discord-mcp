@@ -1,0 +1,41 @@
+{
+  "name": "company-discord-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "test": "tsx --test test/*.test.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "admin": "node --env-file-if-exists=.env --import tsx src/admin.ts",
+    "setup": "node scripts/setup.mjs",
+    "configure": "node --import tsx scripts/configure.mjs",
+    "doctor": "node --env-file-if-exists=.env --import tsx src/doctor.ts",
+    "employees": "node --import tsx scripts/build-employee-kit.mjs",
+    "pack:setup": "node scripts/pack-setup.mjs",
+    "test:setup-cli": "node --test packages/company-discord-setup/test/*.test.mjs",
+    "credentials": "node --import tsx scripts/configure.mjs --secrets-only",
+    "verify-live": "node --env-file=.env --import tsx scripts/verify-live.ts"
+  },
+  "dependencies": {
+    "@discordjs/rest": "^2.6.3",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "discord-api-types": "^0.38.56",
+    "discord.js": "^14.27.0",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

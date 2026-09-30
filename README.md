@@ -109,10 +109,10 @@ HTTPS構成では専用Dockerサブネット`172.30.42.0/24`を使用します�
 社員向けの登録CLIをGitHub Releaseに配布すると、社員は次の1行で取得・登録できます。Node.js 24以上とCodexが必要です。WindowsではCodexアプリ付属のCLIを自動で探します。Mac/Linuxでは`codex`をPATHに登録するか、`CODEX_CLI_PATH`で指定します。
 
 ```sh
-npx --yes https://github.com/OWNER/REPO/releases/latest/download/company-discord-setup.tgz --url https://YOUR-HOST/mcp
+npx --yes https://github.com/jyup-escape/company-discord-mcp/releases/latest/download/company-discord-setup.tgz --url https://YOUR-HOST/mcp
 ```
 
-`OWNER/REPO`は公開したGitHubリポジトリ、`YOUR-HOST`は実際の共有MCPサーバーに置き換えます。`npx`が登録CLIを自動取得し、必要な場合だけDiscordの認証画面を開きます。接続を確認したらCodexを終了して開き直し、新しいチャットで利用します。`--check`を追加すると設定変更なしで接続確認だけを行います。MCPサーバーは管理者が引き続き運用します。
+`YOUR-HOST`は実際の共有MCPサーバーに置き換えます。`npx`が登録CLIを自動取得し、必要な場合だけDiscordの認証画面を開きます。接続を確認したらCodexを終了して開き直し、新しいチャットで利用します。`--check`を追加すると設定変更なしで接続確認だけを行います。MCPサーバーは管理者が引き続き運用します。
 
 配布手順とGitHub Actionsの設定は[CLI配布手順](docs/setup-release.md)を参照してください。非公開リポジトリのReleaseには匿名でアクセスできないため、このコマンドで配布するには社員が取得できる公開先が必要です。
 

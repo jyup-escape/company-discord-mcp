@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-shm
+*.db-wal
+coverage/
+employee-kit/
+.env.*.tmp
+setup-artifacts/
+.tools/
+packages/company-discord-setup/codex-setup.ps1

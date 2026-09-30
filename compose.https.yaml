@@ -1,0 +1,33 @@
+# Run together with compose.yaml. Requires DNS pointing MCP_DOMAIN to the host.
+services:
+  mcp:
+    environment:
+      TRUST_PROXY: 172.30.42.2/32
+    networks:
+      default:
+        ipv4_address: 172.30.42.3
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      MCP_DOMAIN: ${MCP_DOMAIN:?Set MCP_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: 172.30.42.2
+    depends_on:
+      - mcp
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.42.0/24
+volumes:
+  caddy_data:
+  caddy_config:
