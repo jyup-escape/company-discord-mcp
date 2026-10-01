@@ -1,19 +1,46 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateCommand } from './command-protocol.mjs';
 
-export function executeShellCommand(command, { shellPath = '/bin/bash', timeout = 480_000 } = {}) {
+export function executeShellCommand(command, { shellPath = '/bin/bash', timeout = 480_000, outputLimit = 131072 } = {}) {
   const env = { ...process.env };
   delete env.COMMAND_POLL_TOKEN;
   delete env.COMMAND_SERVER_URL;
   delete env.COMMAND_PUBLISH_TOKEN;
   // The command is intentionally interpreted by Bash, as one argument.
-  const child = spawnSync(shellPath, ['--noprofile', '--norc', '-o', 'pipefail', '-c', command], {
-    shell: false, stdio: 'inherit', timeout, env,
+  return new Promise(resolveResult => {
+    const child = spawn(shellPath, ['--noprofile', '--norc', '-o', 'pipefail', '-c', command], {
+      shell: false, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true, env,
+    });
+    const output = { stdout: [], stderr: [] };
+    const lengths = { stdout: 0, stderr: 0 };
+    let truncated = false;
+    let timedOut = false;
+    let executionError;
+    for (const name of ['stdout', 'stderr']) child[name].on('data', chunk => {
+      // Continue draining after the limit so verbose commands can finish normally.
+      const remaining = outputLimit - lengths[name];
+      if (chunk.length > remaining) truncated = true;
+      if (remaining > 0) { const kept = chunk.subarray(0, remaining); output[name].push(kept); lengths[name] += kept.length; }
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (process.platform !== 'win32') { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } }
+      else child.kill('SIGKILL');
+    }, timeout);
+    child.on('error', error => { executionError = error; });
+    child.on('close', code => {
+      clearTimeout(timer);
+      // Avoid a partial UTF-8 character at the byte limit expanding beyond the limit.
+      const decode = chunks => Buffer.from(Buffer.concat(chunks).toString('utf8')).subarray(0, outputLimit).toString('utf8').replace(/\uFFFD$/, '');
+      let stderr = decode(output.stderr);
+      if (timedOut) stderr = `Command timed out.\n${stderr}`;
+      if (executionError) stderr = `Command could not complete: ${executionError.code ?? 'execution error'}\n${stderr}`;
+      resolveResult({ exitCode: timedOut ? 124 : (code ?? 1), stdout: decode(output.stdout),
+        stderr: Buffer.from(stderr).subarray(0, outputLimit).toString('utf8').replace(/\uFFFD$/, ''), truncated });
+    });
   });
-  if (child.error) console.error(`Command could not complete: ${child.error.code ?? 'execution error'}`);
-  return child.status ?? 1;
 }
 
 export async function pollCommand({ baseUrl, token, execute, allowHttp = false }) {
@@ -37,11 +64,14 @@ export async function pollCommand({ baseUrl, token, execute, allowHttp = false }
   const claimed = await request('/command/claim', command);
   if (claimed.status === 409) return { status: 'duplicate', timestamp: command.timestamp };
   if (!claimed.ok) throw new Error(`Claim failed: HTTP ${claimed.status}`);
-  let exitCode;
-  try { exitCode = await execute(command.command); }
-  catch { exitCode = 1; }
+  let execution;
+  try { execution = await execute(command.command); }
+  catch { execution = { exitCode: 1, stderr: 'Command execution failed.\n' }; }
+  if (typeof execution === 'number') execution = { exitCode: execution };
+  let exitCode = execution?.exitCode;
   if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) exitCode = 1;
-  const result = await request('/command/result', { ...command, exitCode });
+  const result = await request('/command/result', { ...command, exitCode,
+    stdout: execution?.stdout ?? '', stderr: execution?.stderr ?? '', truncated: execution?.truncated ?? false });
   if (!result.ok) throw new Error(`Result recording failed: HTTP ${result.status}; command will not be retried`);
   return { status: exitCode === 0 ? 'succeeded' : 'failed', timestamp: command.timestamp, exitCode };
 }

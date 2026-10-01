@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { createCommandServer } from '../scripts/command-server.mjs';
 // @ts-ignore JavaScript entrypoint
 import { pollCommand, executeShellCommand } from '../scripts/poll-command.mjs';
+// @ts-ignore JavaScript entrypoint
+import { submitAndWait } from '../scripts/submit-command.mjs';
 
 const pollToken = 'p'.repeat(32);
 const publishToken = 's'.repeat(32);
@@ -78,9 +80,46 @@ test('arbitrary Bash command runs through polling with pipes, substitution and m
       execute: (text: string) => executeShellCommand(text, { shellPath: bashPath }),
     });
     assert.equal(result.status, 'succeeded');
-    assert.equal(executeShellCommand('exit 23', { shellPath: bashPath }), 23);
-    assert.notEqual(executeShellCommand('false | true', { shellPath: bashPath }), 0);
+    assert.equal((await executeShellCommand('exit 23', { shellPath: bashPath })).exitCode, 23);
+    assert.notEqual((await executeShellCommand('false | true', { shellPath: bashPath })).exitCode, 0);
   } finally { await service.stop(); }
+});
+
+test('submit waits for the worker and returns stdout, stderr and a failing exit code', async () => {
+  const service = await serve();
+  try {
+    let submitted!: () => void;
+    const ready = new Promise<void>(resolve => { submitted = resolve; });
+    const waiting = submitAndWait({ baseUrl: service.baseUrl, token: publishToken, command: 'anything && exit 23',
+      timestamp: 90, pollInterval: 10, onSubmitted: submitted,
+    });
+    await ready;
+    await pollCommand({ baseUrl: service.baseUrl, token: pollToken, allowHttp: true,
+      execute: () => ({ exitCode: 23, stdout: '結果\n', stderr: 'error\n', truncated: false }),
+    });
+    const result = await waiting;
+    assert.equal(result.stdout, '結果\n');
+    assert.equal(result.stderr, 'error\n');
+    assert.equal(result.exit_code, 23);
+    assert.equal(result.status, 'failed');
+  } finally { await service.stop(); }
+});
+
+test('wait timeout leaves the submitted command pending without resubmitting', async () => {
+  const service = await serve();
+  try {
+    await assert.rejects(submitAndWait({ baseUrl: service.baseUrl, token: publishToken, command: 'echo pending',
+      timestamp: 91, timeout: 0 }), /Waiting timed out.*91.*pending/);
+    assert.equal((await (await service.request('/command/91')).json()).status, 'pending');
+  } finally { await service.stop(); }
+});
+
+test('Bash output is captured and capped while the command can finish', { skip: !existsSync(bashPath) }, async () => {
+  const result = await executeShellCommand('printf hello; printf error >&2; printf 1234567890', { shellPath: bashPath, outputLimit: 8 });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, 'hello123');
+  assert.equal(result.stderr, 'error');
+  assert.equal(result.truncated, true);
 });
 
 test('claimed timestamps survive restart even if worker dies before recording a result', async () => {

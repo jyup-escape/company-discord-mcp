@@ -2,14 +2,18 @@
 
 ## セットアップ済みWindows PCでの使い方
 
-このフォルダーで次を実行すると、ローカルサーバーにコマンドを登録できます。
+このフォルダーで次を実行すると、コマンドを送信し、Actionsの実行完了を待って
+標準出力とエラー出力をそのまま返します。CLIの終了コードもコマンドと同じです。
 トークンは `.env.command` から読み取るので、手入力は不要です。
 
 ```powershell
-node --env-file=.env.command scripts/submit-command.mjs "echo hello && node --version"
+node --env-file=.env.command scripts/submit-command.mjs 'echo hello && node --version'
 ```
 
-出力されたtimestampを使って実行状況を確認します。
+通常は結果確認の操作は不要です。ポーリング開始まで数分、さらにコマンドの実行時間を
+待ちます。待機は最大20分です。待機がタイムアウトした場合はtimestampが表示されます。
+登録済みコマンドはその後も実行される可能性があるため、自動で再送はしません。
+表示されたtimestampで状況を確認できます。
 
 ```powershell
 node --env-file=.env.command scripts/submit-command.mjs --status 1790812800000
@@ -128,8 +132,8 @@ ActionsのUbuntu runnerで、チェックアウトしたリポジトリを作業
 | `GET /command` | POLL | 最も古い未実行コマンド。空なら204 |
 | `POST /command` | PUBLISH | コマンドを保存 |
 | `POST /command/claim` | POLL | commandとtimestampを照合して実行権を取得。既取得なら409 |
-| `POST /command/result` | POLL | command、timestamp、exitCodeを保存 |
-| `GET /command/{timestamp}` | PUBLISH | pending / claimed / succeeded / failedと終了コードを確認 |
+| `POST /command/result` | POLL | command、timestamp、exitCode、stdout、stderr、truncatedを保存 |
+| `GET /command/{timestamp}` | PUBLISH | 状態、終了コード、stdout、stderr、truncatedを取得 |
 
 Actionsは1回につき1件を実行します。未実行のコマンドはDBにキューとして残ります。
 実行前にSQLiteの条件付きUPDATEで `pending → claimed` を永続化し、並列ポーリングや
@@ -140,6 +144,9 @@ Actionsの再実行、サーバー再起動でも同じtimestampの実行権を�
 自動リトライしません。状態とActionsログで実行結果を確認してから、新しいtimestampで
 再登録してください。新しいtimestampを使えば同じコマンドでも再実行されます。
 コマンドは最大8分、Actionsジョブ全体は最大12分です。
+標準出力とエラー出力はそれぞれ先頭128KiBまで保存します。上限後も出力を読み捨てて
+実行を継続し、結果には `truncated` を設定します。結果送信APIのJSON上限は2MiBです。
+コマンド登録APIの4KB上限は変わりません。実行結果は自鯖のDBに保存されます。
 
 ## 運用上の前提
 

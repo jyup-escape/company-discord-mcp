@@ -20,6 +20,10 @@ export function createCommandServer({ database, pollToken, publishToken }) {
       status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER, finished_at INTEGER,
       exit_code INTEGER
     );`);
+  const columns = new Set(db.prepare('PRAGMA table_info(commands)').all().map(column => column.name));
+  for (const [name, definition] of Object.entries({ stdout: "TEXT NOT NULL DEFAULT ''", stderr: "TEXT NOT NULL DEFAULT ''", truncated: 'INTEGER NOT NULL DEFAULT 0' })) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE commands ADD COLUMN ${name} ${definition}`);
+  }
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
@@ -57,12 +61,15 @@ export function createCommandServer({ database, pollToken, publishToken }) {
     if (result.changes !== 1) return res.status(409).json({ error: 'Already claimed or unknown command' });
     res.json({ command, timestamp, status: 'claimed' });
   });
-  app.post('/command/result', auth(pollToken), json, (req, res) => {
+  app.post('/command/result', auth(pollToken), express.json({ limit: '2mb' }), (req, res) => {
     const { command, timestamp } = validateCommand(req.body);
     const { exitCode } = req.body;
+    const { stdout = '', stderr = '', truncated = false } = req.body;
     if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) throw new Error('Invalid exitCode');
-    const result = db.prepare("UPDATE commands SET status=?,finished_at=?,exit_code=? WHERE timestamp=? AND command=? AND status='claimed'")
-      .run(exitCode === 0 ? 'succeeded' : 'failed', Date.now(), exitCode, timestamp, command);
+    if (typeof stdout !== 'string' || typeof stderr !== 'string' || typeof truncated !== 'boolean' ||
+      Buffer.byteLength(stdout) > 131072 || Buffer.byteLength(stderr) > 131072) throw new Error('Invalid output');
+    const result = db.prepare("UPDATE commands SET status=?,finished_at=?,exit_code=?,stdout=?,stderr=?,truncated=? WHERE timestamp=? AND command=? AND status='claimed'")
+      .run(exitCode === 0 ? 'succeeded' : 'failed', Date.now(), exitCode, stdout, stderr, truncated ? 1 : 0, timestamp, command);
     if (result.changes !== 1) return res.status(409).json({ error: 'Command is not claimed' });
     res.json({ timestamp, exitCode });
   });
