@@ -10,8 +10,10 @@
 node --env-file=.env.command scripts/submit-command.mjs 'echo hello && node --version'
 ```
 
-通常は結果確認の操作は不要です。ポーリング開始まで数分、さらにコマンドの実行時間を
-待ちます。待機は最大20分です。待機がタイムアウトした場合はtimestampが表示されます。
+通常は結果確認の操作は不要です。Actionsのジョブが起動中なら、待機中は10秒ごとに
+コマンドを取得します。さらにコマンドの実行時間と結果取得の時間を待ちます。
+ジョブ起動の遅延や切り替え中は、数分以上待つことがあります。
+待機は最大20分です。待機がタイムアウトした場合はtimestampが表示されます。
 登録済みコマンドはその後も実行される可能性があるため、自動で再送はしません。
 表示されたtimestampで状況を確認できます。
 
@@ -79,7 +81,8 @@ Repository Settings → Secrets and variables → Actions:
 
 公開用トークン `COMMAND_PUBLISH_TOKEN` はGitHubに登録せず、管理者側で保管します。
 `.github/workflows/poll-command.yml` をデフォルトブランチに置くと、5分ごと
-（毎時2、7、12…57分）に動作します。Actions画面の **Poll repository command → Run workflow**
+（毎時2、7、12…57分）にジョブを起動し、ジョブ内で10秒ごとのポーリングを5分間続けます。
+Actions画面の **Poll repository command → Run workflow**
 から手動実行もできます。Variableが未設定ならジョブはスキップします。
 
 ## 3. コマンドを登録
@@ -135,7 +138,9 @@ ActionsのUbuntu runnerで、チェックアウトしたリポジトリを作業
 | `POST /command/result` | POLL | command、timestamp、exitCode、stdout、stderr、truncatedを保存 |
 | `GET /command/{timestamp}` | PUBLISH | 状態、終了コード、stdout、stderr、truncatedを取得 |
 
-Actionsは1回につき1件を実行します。未実行のコマンドはDBにキューとして残ります。
+Actionsは1回のポーリングで1件を実行します。コマンドの実行中は次の取得を待ち、
+終了後にポーリングを再開します。未実行のコマンドはDBにキューとして残ります。
+1つのコマンドが失敗しても、ジョブの残り時間は後続コマンドの取得を続けます。
 実行前にSQLiteの条件付きUPDATEで `pending → claimed` を永続化し、並列ポーリングや
 Actionsの再実行、サーバー再起動でも同じtimestampの実行権を再発行しません。
 
@@ -143,7 +148,8 @@ Actionsの再実行、サーバー再起動でも同じtimestampの実行権を�
 コマンドが実際には実行されなくても `claimed` のまま残ります。失敗やタイムアウトも
 自動リトライしません。状態とActionsログで実行結果を確認してから、新しいtimestampで
 再登録してください。新しいtimestampを使えば同じコマンドでも再実行されます。
-コマンドは最大8分、Actionsジョブ全体は最大12分です。
+コマンドは最大8分、Actionsジョブ全体は最大16分です。5分のポーリング終了間際に
+取得したコマンドも、実行と結果保存まで完了させます。
 標準出力とエラー出力はそれぞれ先頭128KiBまで保存します。上限後も出力を読み捨てて
 実行を継続し、結果には `truncated` を設定します。結果送信APIのJSON上限は2MiBです。
 コマンド登録APIの4KB上限は変わりません。実行結果は自鯖のDBに保存されます。
@@ -155,9 +161,11 @@ GitHub-hosted runnerは、リポジトリのソフトウェアの開発・テス
 関係する用途で利用してください。
 [GitHub Actionsの追加利用条件](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features)
 
-scheduleの最短間隔は5分です。
+scheduleの最短間隔は5分です。10秒間隔はジョブ内のループで実現しています。
 [Workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 scheduleは遅延・欠落があり、デフォルトブランチで動作します。
 公開リポジトリでは60日間活動がないと定期実行が無効になることがあります。
 厳密な時刻や即時実行が必要な処理には適しません。
+10秒ごとの確認が常時途切れず続く保証はありません。ジョブの起動・依存関係の準備・
+ジョブ切り替え・長いコマンドの実行中には空白時間があります。
 [scheduleの仕様](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)

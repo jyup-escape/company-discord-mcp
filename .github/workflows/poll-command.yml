@@ -12,7 +12,7 @@ jobs:
   poll:
     if: vars.COMMAND_POLL_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,8 +22,10 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Poll and execute once
+      - name: Poll every 10 seconds for 5 minutes
         run: node scripts/poll-command.mjs
         env:
           COMMAND_SERVER_URL: ${{ secrets.COMMAND_SERVER_URL }}
           COMMAND_POLL_TOKEN: ${{ secrets.COMMAND_POLL_TOKEN }}
+          COMMAND_POLL_INTERVAL_MS: '10000'
+          COMMAND_POLL_DURATION_MS: '300000'

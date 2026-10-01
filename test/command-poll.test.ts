@@ -7,7 +7,7 @@ import { join } from 'node:path';
 // @ts-ignore JavaScript entrypoint
 import { createCommandServer } from '../scripts/command-server.mjs';
 // @ts-ignore JavaScript entrypoint
-import { pollCommand, executeShellCommand } from '../scripts/poll-command.mjs';
+import { pollCommand, pollCommands, executeShellCommand } from '../scripts/poll-command.mjs';
 // @ts-ignore JavaScript entrypoint
 import { submitAndWait } from '../scripts/submit-command.mjs';
 
@@ -69,6 +69,30 @@ test('authentication and shell command input validation', async () => {
 });
 
 const bashPath = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash';
+test('polling loop keeps checking after idle and a failed command, then executes the next command', async () => {
+  const service = await serve();
+  try {
+    const seen: string[] = [];
+    let enqueue: Promise<unknown> | undefined;
+    const summary = await pollCommands({ baseUrl: service.baseUrl, token: pollToken, allowHttp: true,
+      execute: (command: string) => command === 'exit 7' ? 7 : 0,
+    }, { interval: 30, duration: 240, onPoll: (result: { status: string }) => {
+      seen.push(result.status);
+      if (seen.length === 1) enqueue = (async () => {
+        await service.request('/command', { command: 'exit 7', timestamp: 101 });
+        await service.request('/command', { command: 'echo success', timestamp: 102 });
+      })();
+    }});
+    await enqueue;
+    assert.equal(seen[0], 'idle');
+    assert.ok(seen.includes('failed'));
+    assert.ok(seen.includes('succeeded'));
+    assert.equal(summary.failed, true);
+    assert.ok(summary.polls >= 3);
+    assert.equal((await (await service.request('/command/102')).json()).status, 'succeeded');
+  } finally { await service.stop(); }
+});
+
 test('arbitrary Bash command runs through polling with pipes, substitution and multiline syntax', {
   skip: !existsSync(bashPath),
 }, async () => {

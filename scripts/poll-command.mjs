@@ -76,11 +76,39 @@ export async function pollCommand({ baseUrl, token, execute, allowHttp = false }
   return { status: exitCode === 0 ? 'succeeded' : 'failed', timestamp: command.timestamp, exitCode };
 }
 
+export async function pollCommands(options, { interval = 10_000, duration = 300_000, onPoll = () => {}, onError = () => {} } = {}) {
+  if (!Number.isFinite(interval) || interval <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error('Polling interval and duration must be positive');
+  }
+  const deadline = performance.now() + duration;
+  let failed = false;
+  let polls = 0;
+  while (performance.now() < deadline) {
+    const started = performance.now();
+    const polledAt = new Date().toISOString();
+    try {
+      const result = await pollCommand(options);
+      if (result.status === 'failed') failed = true;
+      onPoll({ ...result, polledAt });
+    } catch (error) { failed = true; onError(error); }
+    polls++;
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) break;
+    const wait = Math.min(remaining, Math.max(0, interval - (performance.now() - started)));
+    if (wait > 0) await new Promise(resolveWait => setTimeout(resolveWait, wait));
+  }
+  return { polls, failed };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const result = await pollCommand({
+  const result = await pollCommands({
     baseUrl: process.env.COMMAND_SERVER_URL, token: process.env.COMMAND_POLL_TOKEN,
     execute: executeShellCommand,
+  }, {
+    interval: Number(process.env.COMMAND_POLL_INTERVAL_MS ?? 10_000),
+    duration: Number(process.env.COMMAND_POLL_DURATION_MS ?? 300_000),
+    onPoll: result => console.log(JSON.stringify(result)),
+    onError: error => console.error(`Polling failed: ${error.message}`),
   });
-  console.log(JSON.stringify(result));
-  if (result.status === 'failed') process.exitCode = 1;
+  if (result.failed) process.exitCode = 1;
 }
