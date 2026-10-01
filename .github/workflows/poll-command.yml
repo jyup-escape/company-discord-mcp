@@ -1,0 +1,29 @@
+name: Poll repository command
+on:
+  schedule:
+    - cron: '2-59/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: poll-repository-command
+  cancel-in-progress: false
+jobs:
+  poll:
+    if: vars.COMMAND_POLL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Poll and execute once
+        run: node scripts/poll-command.mjs
+        env:
+          COMMAND_SERVER_URL: ${{ secrets.COMMAND_SERVER_URL }}
+          COMMAND_POLL_TOKEN: ${{ secrets.COMMAND_POLL_TOKEN }}

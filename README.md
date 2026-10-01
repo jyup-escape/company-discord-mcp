@@ -1,5 +1,7 @@
 # Company Discord MCP
 
+自鯖の `/command` をGitHub Actionsで定期取得してリポジトリのタスクを実行する構成は、[コマンドポーリングの設定手順](docs/command-polling.md)を参照してください。timestampによる重複防止、認証、永続DB付きです。
+
 **1つのDiscord Botを社員全員で共有し、各社員が自分のDiscordアカウントで認証するMCPサーバーです。** Codex、Claude Code、Claudeのリモートコネクター向けに、Streamable HTTPとOAuth認証を実装しています。社員にBotトークンを配布する必要はありません。
 
 ## 構成
