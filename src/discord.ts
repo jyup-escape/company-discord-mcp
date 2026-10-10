@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { Routes, ChannelType, type APIChannel, type APIGuild, type APIGuildMember, type APIMessage, type APIRole, type APIUser } from 'discord-api-types/v10';
 import type { Config } from './config.js';
 import { has, P, permissionsFor } from './permissions.js';
-import { Store, now, type User } from './store.js';
+import { EncryptedStore, now, type User } from './storage.js';
 
 export class AccessError extends Error {}
 type TextChannel = Extract<APIChannel, { type: ChannelType.GuildText | ChannelType.GuildAnnouncement }>;
@@ -20,8 +20,10 @@ export interface DiscordApi {
 }
 export class DiscordRest implements DiscordApi {
   private rest: REST;
-  constructor(private config: Config) {
-    this.rest = new REST({ version: '10', timeout: 15000, retries: 2 }).setToken(config.DISCORD_BOT_TOKEN);
+  constructor(private config: Config, options: { disableSweepers?: boolean } = {}) {
+    this.rest = new REST({ version: '10', timeout: 15000, retries: 2,
+      ...(options.disableSweepers ? { hashSweepInterval: 0, handlerSweepInterval: 0 } : {}),
+    }).setToken(config.DISCORD_BOT_TOKEN);
   }
   async user() { return await this.rest.get(Routes.user()) as APIUser; }
   async guild() { return await this.rest.get(Routes.guild(this.config.DISCORD_GUILD_ID)) as APIGuild; }
@@ -56,7 +58,7 @@ export class DiscordRest implements DiscordApi {
   }
 }
 export class DiscordService {
-  constructor(readonly config: Config, readonly store: Store, readonly api: DiscordApi) {}
+  constructor(readonly config: Config, readonly store: EncryptedStore, readonly api: DiscordApi) {}
   async eligible(userId: string) {
     if (this.store.get<User>('users', userId)?.disabled) throw new AccessError('このアカウントは利用停止中です。');
     let member: APIGuildMember;

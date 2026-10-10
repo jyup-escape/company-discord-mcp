@@ -1,16 +1,16 @@
 import express, { type ErrorRequestHandler } from 'express';
 import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, type Store as RateLimitStore } from 'express-rate-limit';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Config } from './config.js';
-import { Store } from './store.js';
+import { EncryptedStore } from './storage.js';
 import { AuthProvider } from './auth.js';
 import { AccessError, DiscordService, DiscordRest, type DiscordApi } from './discord.js';
 import { createMcp } from './mcp.js';
 
-export function createApp(config: Config, store: Store, api: DiscordApi = new DiscordRest(config)) {
+export function createApp(config: Config, store: EncryptedStore, api: DiscordApi = new DiscordRest(config), limiterStore?: (prefix: string) => RateLimitStore) {
   const discord = new DiscordService(config, store, api);
   const provider = new AuthProvider(config, store, discord);
   const app = express();
@@ -27,13 +27,15 @@ export function createApp(config: Config, store: Store, api: DiscordApi = new Di
   app.use(express.json({ limit: '64kb' }), express.urlencoded({ extended: false, limit: '16kb' }));
   app.get('/healthz', (_req, res) => res.json({ status: 'ok', bot: app.locals.botStatus ?? 'not_connected' }));
   app.get('/', (_req, res) => res.json({ name: 'Company Discord MCP', endpoint: config.resource, registration: 'MCPクライアントにendpointを追加し、Discordでログインしてください。' }));
-  const authLimit = rateLimit({ windowMs: 600000, limit: 1000, standardHeaders: 'draft-8', legacyHeaders: false });
+  const persisted = (prefix: string) => limiterStore ? { store: limiterStore(prefix) } : {};
+  const authLimit = rateLimit({ ...persisted('oauth'), windowMs: 600000, limit: 1000, standardHeaders: 'draft-8', legacyHeaders: false });
   app.use('/oauth', authLimit);
   app.use(mcpAuthRouter({ provider, issuerUrl: new URL(config.publicUrl), resourceServerUrl: new URL(config.resource),
     scopesSupported: config.enableSend ? ['discord:read', 'discord:write'] : ['discord:read'], resourceName: 'Company Discord',
-    clientRegistrationOptions: { clientSecretExpirySeconds: 0, rateLimit: { windowMs: 3600000, limit: 500 } },
-    authorizationOptions: { rateLimit: { windowMs: 600000, limit: 1000 } },
-    tokenOptions: { rateLimit: { windowMs: 600000, limit: 5000 } },
+    clientRegistrationOptions: { clientSecretExpirySeconds: 0, rateLimit: { ...persisted('register'), windowMs: 3600000, limit: 500 } },
+    authorizationOptions: { rateLimit: { ...persisted('authorize'), windowMs: 600000, limit: 1000 } },
+    revocationOptions: { rateLimit: { ...persisted('revoke'), windowMs: 60000, limit: 100 } },
+    tokenOptions: { rateLimit: { ...persisted('token'), windowMs: 600000, limit: 5000 } },
   }));
   app.post('/oauth/discord/start', (req, res) => provider.start(req, res));
   app.get('/oauth/discord/start', (req, res) => provider.start(req, res));
@@ -51,9 +53,9 @@ export function createApp(config: Config, store: Store, api: DiscordApi = new Di
     if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
     next();
   });
-  app.use('/mcp', rateLimit({ windowMs: 60000, limit: 6000, standardHeaders: 'draft-8', legacyHeaders: false }));
+  app.use('/mcp', rateLimit({ ...persisted('mcp-global'), windowMs: 60000, limit: 6000, standardHeaders: 'draft-8', legacyHeaders: false }));
   app.use('/mcp', requireBearerAuth({ verifier: provider, resourceMetadataUrl: `${config.publicUrl}/.well-known/oauth-protected-resource/mcp` }));
-  app.use('/mcp', rateLimit({ windowMs: 60000, limit: 60, keyGenerator: req => String(req.auth!.extra!.userId), standardHeaders: 'draft-8', legacyHeaders: false }));
+  app.use('/mcp', rateLimit({ ...persisted('mcp-user'), windowMs: 60000, limit: 60, keyGenerator: req => String(req.auth!.extra!.userId), standardHeaders: 'draft-8', legacyHeaders: false }));
   app.post('/mcp', async (req, res) => {
     const server = createMcp(discord, req.auth!);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

@@ -5,7 +5,7 @@ import type { OAuthClientInformationFull, OAuthTokens, OAuthTokenRevocationReque
 import { InvalidClientMetadataError, InvalidGrantError, InvalidRequestError, InvalidScopeError, InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { Config } from './config.js';
-import { Store, now, digest, randomToken, type User } from './store.js';
+import { EncryptedStore, now, digest, randomToken, type User } from './storage.js';
 import { AccessError, DiscordService } from './discord.js';
 
 type Pending = { clientId: string; redirectUri: string; challenge: string; state?: string; scopes: string[]; browserHash: string };
@@ -18,7 +18,7 @@ const page = (body: string) => `<!doctype html><html lang="ja"><head><meta chars
 export class AuthProvider implements OAuthServerProvider {
   readonly clientsStore: OAuthRegisteredClientsStore;
   readonly cookieName: string;
-  constructor(readonly config: Config, readonly store: Store, readonly discord: DiscordService) {
+  constructor(readonly config: Config, readonly store: EncryptedStore, readonly discord: DiscordService) {
     this.cookieName = config.publicUrl.startsWith('https:') ? '__Host-discord_mcp_flow' : 'discord_mcp_flow';
     this.clientsStore = {
       getClient: id => store.get<OAuthClientInformationFull>('clients', id),

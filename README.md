@@ -27,6 +27,10 @@
 
 対象は通常のテキストチャンネルとアナウンスチャンネルです。DM、スレッド、フォーラム、音声チャンネル内チャット、添付のアップロード、編集・削除、サーバー管理は含みません。検索は本文が対象で、全履歴の全文検索や添付ファイルの中身の検索ではありません。
 
+## Cloudflareへの公開
+
+Cloudflare WorkersとSQLite形式のDurable Objectsで公開する場合は、[設定と公開の手順](docs/cloudflare-guide.md)を参照してください。Node.jsとDockerの構成も引き続き利用できます。[設置仕様](docs/deployment-specification.md)に両構成の差分と検証範囲を記載しています。
+
 ## 管理者の初期設定
 
 Windowsでは`管理者セットアップ.cmd`を開くと、トークンを表示しない対話入力で`.env`を設定できます。設定後はBotの認証・会社サーバー参加・Intent・ロールを自動確認します。CLIでは`npm run configure`、接続診断だけなら`npm run doctor`です。既存の暗号鍵と入力済みの値は保持します。
@@ -43,7 +47,7 @@ Windowsでは`管理者セットアップ.cmd`を開くと、トークンを表�
 6. OAuth2 URL Generatorの`bot`スコープで、**View Channels / Read Message History / Send Messages**だけを指定し、会社サーバーに招待します。Administrator権限は必要ありません。
 7. Discordの開発者モードを有効にし、会社サーバーのIDをコピーします。必要なら社員ロールと対象チャンネルのIDもコピーします。
 
-この実装はREST APIを使い、Gatewayへの常時接続はしません。Discord上ではBotがオフライン表示でもAPIで動作します。社員の個人トークンやユーザーアカウントのBot化は使用しません。
+MCPの操作はREST APIを使います。Node.js構成ではBotのオンライン表示のためGatewayへ常時接続します。Cloudflare構成ではGatewayへ接続しません。Discord上ではBotがオフライン表示でもAPIで動作します。社員の個人トークンやユーザーアカウントのBot化は使用しません。
 
 ### 2. 設定ファイルを用意する
 
