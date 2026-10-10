@@ -69,3 +69,72 @@ test('posting is attributed, audited and respects timeout, slowmode and read-onl
   await assert.rejects(service.send(U, C, 'too fast'));
   config.enableSend = false; await assert.rejects(service.send(U, PRIVATE, 'disabled'));
 });
+
+const F = '100000000000000010', T = '100000000000000011', T2 = '100000000000000012';
+function forumFixture(t: test.TestContext) {
+  const f = fixture(t);
+  f.api.channelList.push({ id: F, guild_id: G, type: 15, name: 'アイデア', permission_overwrites: [] } as any);
+  const post = (id: string, parent = F, type = 11) => ({ id, guild_id: G, type, parent_id: parent, name: '案', thread_metadata: { archived: false, archive_timestamp: '2026-10-10T01:00:00Z' } }) as any;
+  f.api.channelList.push(post(T), post(T2));
+  f.api.threadList = [post(T), post(T2), post(PRIVATE, F, 12), post(C, PRIVATE), { ...post(OTHER), guild_id: OTHER }];
+  return { ...f, post };
+}
+
+test('forum posts paginate without exposing other parents, guilds or private threads', async t => {
+  const { service } = forumFixture(t);
+  assert.ok((await service.list(U)).some(c => c.id === F));
+  const first = await service.listPosts(U, F, false, 1);
+  assert.deepEqual(first.posts.map(p => p.id), [T2]);
+  assert.equal(first.next_offset, 1);
+  const second = await service.listPosts(U, F, false, 1, undefined, first.next_offset!);
+  assert.deepEqual(second.posts.map(p => p.id), [T]);
+  assert.equal(second.has_more, false);
+});
+
+test('forum read and search inherit parent permissions and reject write operations', async t => {
+  const { service, api, config } = forumFixture(t);
+  await service.read(U, T, 1);
+  assert.equal((await service.search(U, T, 'alpha', 20)).matches.length, 1);
+  await assert.rejects(service.send(U, T, 'reply'));
+  await assert.rejects(service.send(U, F, 'new post'));
+  assert.equal(api.sends.length, 0);
+  config.allowedChannels = [T];
+  await assert.rejects(service.read(U, T, 1));
+  config.allowedChannels = [F];
+  await service.read(U, T, 1);
+  for (const id of [U, B]) {
+    api.channelList.find(c => c.id === F)!.permission_overwrites = [{ id, type: 1, deny: String(P.ReadMessageHistory), allow: '0' }];
+    const previous = api.reads.length;
+    await assert.rejects(service.read(U, T, 1));
+    await assert.rejects(service.listPosts(U, F, false, 20));
+    assert.equal(api.reads.length, previous);
+    assert.ok(!(await service.list(U)).some(c => c.id === F));
+  }
+});
+
+test('forum starter is available separately from recent replies and may be deleted', async t => {
+  const { service, api } = forumFixture(t);
+  api.history = [msg('200000000000000001', 'reply', T), msg(T, 'original body', T)];
+  const result = await service.readPost(U, T, 1);
+  assert.equal(result.starter!.content, 'original body');
+  assert.equal(result.messages[0]!.content, 'reply');
+  const older = await service.readPost(U, T, 1, result.next_before!);
+  assert.equal(older.messages[0]!.id, T);
+  api.history.pop();
+  assert.equal((await service.readPost(U, T, 1)).starter, null);
+  await assert.rejects(service.readPost(U, C, 1));
+  await assert.rejects(service.readPost(U, F, 1));
+});
+
+test('archived forum posts expose timestamp cursor and validate parent guild', async t => {
+  const { service, api, post } = forumFixture(t);
+  api.archivedList = [post(T2), { ...post(T), thread_metadata: { archived: true, archive_timestamp: '2026-10-09T01:00:00Z' } }];
+  const first = await service.listPosts(U, F, true, 1);
+  assert.equal(first.next_before, '2026-10-10T01:00:00Z');
+  const second = await service.listPosts(U, F, true, 1, first.next_before!);
+  assert.equal(second.posts[0]!.id, T);
+  assert.equal(second.has_more, false);
+  api.channelList.find(c => c.id === F)!.guild_id = OTHER;
+  await assert.rejects(service.read(U, T, 1));
+  await assert.rejects(service.listPosts(U, F, true, 1));
+});

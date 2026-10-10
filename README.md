@@ -21,11 +21,17 @@
 | --- | --- |
 | `discord_whoami` | ログインした社員・会社サーバー・接続権限を確認 |
 | `discord_list_channels` | 本人とBotが両方とも閲覧できるチャンネル一覧 |
+| `discord_list_forum_posts` | フォーラム内の表示中・保存済み投稿の一覧。ページ送り対応 |
+| `discord_read_forum_post` | 投稿の最初の本文と直近の本文・返信を取得 |
 | `discord_read_messages` | メッセージ閲覧。1回最大50件、過去へのページ送り |
 | `discord_search_messages` | 指定チャンネルの直近最大500件から部分一致検索。最大20件返却、続きから検索可能 |
 | `discord_send_message` | Botから投稿。実行社員のDiscord ID付き。メンション通知を抑止 |
 
-対象は通常のテキストチャンネルとアナウンスチャンネルです。DM、スレッド、フォーラム、音声チャンネル内チャット、添付のアップロード、編集・削除、サーバー管理は含みません。検索は本文が対象で、全履歴の全文検索や添付ファイルの中身の検索ではありません。
+通常のテキスト・アナウンスチャンネルと、フォーラム内の公開投稿の読取りに対応します。フォーラムへの書込み、フォーラム以外のスレッド、非公開スレッド、DM、音声チャンネル内チャット、添付のアップロード、編集・削除、サーバー管理は含みません。検索は本文が対象で、全履歴の全文検索や添付ファイルの中身の検索ではありません。
+
+## Cloudflareへの公開
+
+Cloudflare WorkersとSQLite形式のDurable Objectsで公開する場合は、[設定と公開の手順](docs/cloudflare-guide.md)を参照してください。Node.jsとDockerの構成も引き続き利用できます。[設置仕様](docs/deployment-specification.md)に両構成の差分と検証範囲を記載しています。
 
 ## 管理者の初期設定
 
@@ -43,7 +49,7 @@ Windowsでは`管理者セットアップ.cmd`を開くと、トークンを表�
 6. OAuth2 URL Generatorの`bot`スコープで、**View Channels / Read Message History / Send Messages**だけを指定し、会社サーバーに招待します。Administrator権限は必要ありません。
 7. Discordの開発者モードを有効にし、会社サーバーのIDをコピーします。必要なら社員ロールと対象チャンネルのIDもコピーします。
 
-この実装はREST APIを使い、Gatewayへの常時接続はしません。Discord上ではBotがオフライン表示でもAPIで動作します。社員の個人トークンやユーザーアカウントのBot化は使用しません。
+MCPの操作はREST APIを使います。Node.js構成ではBotのオンライン表示のためGatewayへ常時接続します。Cloudflare構成ではGatewayへ接続しません。Discord上ではBotがオフライン表示でもAPIで動作します。社員の個人トークンやユーザーアカウントのBot化は使用しません。
 
 ### 2. 設定ファイルを用意する
 

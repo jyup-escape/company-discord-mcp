@@ -20,7 +20,9 @@
     "pack:setup": "node scripts/pack-setup.mjs",
     "test:setup-cli": "node --test packages/company-discord-setup/test/*.test.mjs",
     "credentials": "node --import tsx scripts/configure.mjs --secrets-only",
-    "verify-live": "node --env-file=.env --import tsx scripts/verify-live.ts"
+    "verify-live": "node --env-file=.env --import tsx scripts/verify-live.ts",
+    "check:workers": "tsc -p tsconfig.workers.json",
+    "deploy:cloudflare": "npm run build && node scripts/deploy-cloudflare.mjs"
   },
   "dependencies": {
     "@discordjs/rest": "^2.6.3",
@@ -33,9 +35,11 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261010.1",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.149.0"
   }
 }
