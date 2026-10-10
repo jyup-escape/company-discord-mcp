@@ -6,7 +6,7 @@
 
 ## 現在の状態
 
-READMEの手順に従って取得、`npm ci`、`npm run setup`、型検査、試験、ビルドを実施した。`.env`と32バイトの保存用暗号鍵を生成した。DiscordのアプリID、Client Secret、Bot Token、サーバーIDは未入力。Cloudflareに公開先を作成し、設定未完了時に503を返すことを外部から確認した。公開URLは https://company-discord-mcp.desudesu2387.workers.dev 。パソコンを停止しても公開先はCloudflare側で提供される。試験は模擬Discord APIを使用するため、実際のDiscord接続成功を意味しない。
+READMEの手順に従って取得、`npm ci`、`npm run setup`、型検査、試験、ビルドを実施した。`.env`と32バイトの保存用暗号鍵を生成した。DiscordのアプリID、Client Secret、Bot Token、サーバーIDは入力・Cloudflare反映済み。公開先の稼働確認はHTTP 200を返す。未認証のMCP要求は401で拒否する。公開URLは https://company-discord-mcp.desudesu2387.workers.dev 。パソコンを停止しても公開先はCloudflare側で提供される。試験は模擬Discord APIを使用するため、実際のDiscord接続成功を意味しない。
 
 ## ファイルの関係
 
@@ -75,7 +75,7 @@ Renderの無料サービスは無通信15分で停止し、無料サービスへ
 ## 公開前に必要な入力と確認
 
 - Cloudflare: `wrangler login`で再認証済み。公開コードと保存用暗号鍵を反映済み。
-- Discord: `.env`へアプリID、Client Secret、Bot Token、会社サーバーIDを入力する。トークンをGitや仕様書へ記録しない。
+- Discord: アプリID、Client Secret、Bot Token、会社サーバーIDは入力と反映を確認済み。値はGitや仕様書へ記録しない。
 - Discord Developer Portal: Message Content Intentを有効にし、Botへ閲覧・履歴読出し・投稿の権限を設定する。
 - 公開URLが決まった後、`PUBLIC_URL`とDiscord OAuth2 Redirectsを一致させる。戻り先は公開URLに`/oauth/discord/callback`を付けた値。
 - ゲストがいるサーバーでは社員ロールを確認し、`EMPLOYEE_ROLE_IDS`へ設定する。
@@ -94,8 +94,8 @@ Renderの無料サービスは無通信15分で停止し、無料サービスへ
 | `wrangler whoami` | 再認証後に成功 |
 | `npm run check:workers` | 成功 |
 | Workers実行環境 | 登録、同意、認証券の再使用拒否、Origin検査、再起動後の登録保持を確認 |
-| Discord実接続 | 認証設定が未入力のため未実施 |
-| 外部公開 | HTTPS到達と設定未完了時の503を確認。Discord利用は未完了 |
+| Discord実接続 | Bot認証、アプリ一致、サーバー参加、Intent、16チャンネルの履歴閲覧権限を確認。Client Secretの組合せも確認 |
+| 外部公開 | 稼働確認200、認証情報200、未認証MCP401を確認。社員のOAuthログインは未確認 |
 
 ## Cloudflare用の追加ファイルと運用
 
@@ -117,3 +117,11 @@ Cloudflare経路ではBotはDiscord上でオフライン表示になる。MCPの
 暗号鍵は最初に作成した値を保持する。鍵を変更すると既存の認証状態を復号できない。稼働処理は要求に応じて実行し、未使用時の常時実行や外部からの定期呼出しは設定していない。期限切れの情報と90日経過した操作記録は、その後の要求時に一時間間隔で削除する。
 
 2026-10-10のCloudflare管理画面で、Workersの無料プラン（$0）が現在のプランであることを確認した。無料枠の超過による失敗とサービス側の条件変更は継続稼働の制約になる。
+
+## Discord設定反映後の状態
+
+2026-10-10、Discordの設定4項目をCloudflareへ反映した。Bot認証、アプリ一致、Message Content Intent、対象サーバーへのBot参加、Botが16チャンネルの履歴を取得できる権限を確認した。Client SecretとApplication IDはDiscordの認証要求で一致を確認し、診断用に発行した一時認証は失効した。
+
+Discordアプリの登録済み認証戻り先には公開先のURLが含まれていなかった。管理画面の現在のアカウントでは対象アプリが見つからず、登録変更は実施していない。管理できるアカウントで https://company-discord-mcp.desudesu2387.workers.dev/oauth/discord/callback を登録する必要がある。社員のOAuthログインとログイン後のMCP操作は、その後に確認する。
+
+社員ロールと対象チャンネルの制限は空欄。現在の対象はDiscordサーバー参加者全員であり、閲覧・投稿には本人とBotの双方のDiscord権限を適用する。社員向け配布ファイルを生成した。投稿は実施していない。
