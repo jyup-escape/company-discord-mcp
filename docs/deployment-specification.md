@@ -95,7 +95,7 @@ Renderの無料サービスは無通信15分で停止し、無料サービスへ
 | `npm run check:workers` | 成功 |
 | Workers実行環境 | 登録、同意、認証券の再使用拒否、Origin検査、再起動後の登録保持を確認 |
 | Discord実接続 | Bot認証、アプリ一致、サーバー参加、Intent、16チャンネルの履歴閲覧権限を確認。Client Secretの組合せも確認 |
-| 外部公開 | 稼働確認200、認証情報200、未認証MCP401を確認。社員のOAuthログインは未確認 |
+| 外部公開 | 稼働確認200、認証情報200、未認証MCP401、社員のOAuthログイン、本人情報、チャンネル一覧、投稿、投稿後の履歴読出しを確認 |
 
 ## Cloudflare用の追加ファイルと運用
 
@@ -122,9 +122,9 @@ Cloudflare経路ではBotはDiscord上でオフライン表示になる。MCPの
 
 2026-10-10、Discordの設定4項目をCloudflareへ反映した。Bot認証、アプリ一致、Message Content Intent、対象サーバーへのBot参加、Botが16チャンネルの履歴を取得できる権限を確認した。Client SecretとApplication IDはDiscordの認証要求で一致を確認し、診断用に発行した一時認証は失効した。
 
-Discordアプリの登録済み認証戻り先には公開先のURLが含まれていなかった。管理画面の現在のアカウントでは対象アプリが見つからず、登録変更は実施していない。管理できるアカウントで https://company-discord-mcp.desudesu2387.workers.dev/oauth/discord/callback を登録する必要がある。社員のOAuthログインとログイン後のMCP操作は、その後に確認する。
+Discordアプリの認証戻り先 https://company-discord-mcp.desudesu2387.workers.dev/oauth/discord/callback の登録をAPIで確認した。社員本人が認証画面を操作し、公開先でのOAuthログインとログイン後のMCP操作を確認した。
 
-社員ロールと対象チャンネルの制限は空欄。現在の対象はDiscordサーバー参加者全員であり、閲覧・投稿には本人とBotの双方のDiscord権限を適用する。社員向け配布ファイルを生成した。投稿は実施していない。
+社員ロールと対象チャンネルの制限は空欄。現在の対象はDiscordサーバー参加者全員であり、閲覧・投稿には本人とBotの双方のDiscord権限を適用する。社員向け配布ファイルを生成し、「アカウント共有」に導入案内を投稿した。
 
 ## HTTP処理の再生成時の修正
 
@@ -132,4 +132,6 @@ Discordアプリの登録済み認証戻り先には公開先のURLが含まれ�
 
 `workers/http.ts`で要求ごとに自動割当ての待受番号を用い、処理後にHTTPサーバーを閉じる。Durable Objectsの再生成に伴って古いHTTP登録が残る状態を防ぐ。並行要求と再生成相当の呼出し、失敗時の待受登録解除を検証する試験を追加し、サーバー試験36件とWorkers型検査が通過した。Cloudflareへ反映した。
 
-Discordの認証戻り先の登録をAPIで確認した。社員向け案内をMCP経由で投稿するための本人認証は、Discord認証後の戻り先がBraveに遮断されており、利用者の画面操作を待っている。現時点では投稿未実施。
+本人による認証後、`discord_whoami`、`discord_list_channels`、`discord_send_message`、`discord_read_messages`を公開先のMCP経由で実行した。「アカウント共有」（1553000096961142814）へ社員向け導入案内を投稿し、履歴に同じ投稿IDが含まれることを確認した。投稿用の一時認証は処理終了時に失効した（HTTP 200）。
+
+投稿URL: https://discord.com/channels/1552927906638995466/1553000096961142814/1558366668387000340
