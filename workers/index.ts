@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { handleAsNodeRequest } from 'cloudflare:node';
-import { createServer } from 'node:http';
+import { serveHttpRequest } from './http.js';
 import { readConfig } from '../src/config.js';
 import { createApp } from '../src/app.js';
 import { DiscordRest } from '../src/discord.js';
@@ -27,11 +27,11 @@ const configured = (env: Env) => [env.DISCORD_CLIENT_ID, env.DISCORD_CLIENT_SECR
 
 export class CompanyDiscord extends DurableObject<Env> {
   private store?: EncryptedStore;
-  private listening = false;
+  private app?: ReturnType<typeof createApp>['app'];
   private lastPrune = 0;
   async fetch(request: Request): Promise<Response> {
     if (!configured(this.env)) return Response.json({ status: 'setup_required' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
-    if (!this.listening) {
+    if (!this.app) {
       const { COMPANY: _namespace, ...settings } = this.env;
       let config;
       try { config = readConfig({ ...settings, PORT: '3000', HOST: '127.0.0.1', DATABASE_PATH: ':durable:', TRUST_PROXY: '' }); }
@@ -43,19 +43,10 @@ export class CompanyDiscord extends DurableObject<Env> {
       const { app } = createApp(config, this.store, new DiscordRest(config, { disableSweepers: true }), prefix => new PersistentRateLimit(this.store!, prefix));
       // Gateway presence is not used on Workers; MCP operations use Discord REST.
       app.locals.botStatus = 'rest_only';
-      // The front Worker discards caller-supplied forwarding headers. Use only the
-      // Cloudflare-provided address for Express's existing per-address limiters.
-      const server = createServer((req, res) => {
-        const address = req.headers['x-company-client-ip'];
-        if (typeof address === 'string') Object.defineProperty(req.socket, 'remoteAddress', { value: address, configurable: true });
-        delete req.headers['x-company-client-ip'];
-        app(req, res);
-      });
-      server.listen(3000);
-      this.listening = true;
+      this.app = app;
     }
     if (Date.now() - this.lastPrune > 3600000) { this.store!.prune(); this.lastPrune = Date.now(); }
-    return handleAsNodeRequest(3000, request);
+    return serveHttpRequest(this.app, request, handleAsNodeRequest);
   }
 }
 
