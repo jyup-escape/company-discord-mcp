@@ -85,7 +85,7 @@ test('two SDK clients initialize and use tools with isolated employee permission
   const clients = [a, b].map((session, i) => ({ client: new Client({ name: `test-${i}`, version: '1' }), transport: new StreamableHTTPClientTransport(new URL(f.config.resource), { requestInit: { headers: { Authorization: `Bearer ${session.tokens.access_token}` } } }) }));
   for (const c of clients) { await c.client.connect(c.transport); t.after(() => c.client.close()); }
   const first = clients[0]!.client, second = clients[1]!.client;
-  assert.equal((await first.listTools()).tools.length, 5);
+  assert.equal((await first.listTools()).tools.length, 7);
   const who = await second.callTool({ name: 'discord_whoami', arguments: {} });
   assert.match(JSON.stringify(who), new RegExp(OTHER));
   const denied = await second.callTool({ name: 'discord_read_messages', arguments: { channel_id: PRIVATE } });
@@ -101,7 +101,18 @@ test('read-only tokens do not expose the posting tool; invalid origins and hosts
   const client = new Client({ name: 'test', version: '1' });
   await client.connect(new StreamableHTTPClientTransport(new URL(f.config.resource), { requestInit: { headers: { Authorization: `Bearer ${a.tokens.access_token}` } } }));
   t.after(() => client.close());
-  assert.equal((await client.listTools()).tools.length, 4);
+  assert.equal((await client.listTools()).tools.length, 6);
+  const forum = '100000000000000010', post = '100000000000000011';
+  f.api.channelList.push({ id: forum, guild_id: f.config.DISCORD_GUILD_ID, type: 15, name: 'アイデア', permission_overwrites: [] } as any);
+  const thread = { id: post, guild_id: f.config.DISCORD_GUILD_ID, type: 11, parent_id: forum, name: '案', thread_metadata: { archived: false, archive_timestamp: '2026-10-10T00:00:00Z' } } as any;
+  f.api.channelList.push(thread); f.api.threadList = [thread];
+  const listed = await client.callTool({ name: 'discord_list_forum_posts', arguments: { forum_id: forum } });
+  assert.notEqual(listed.isError, true); assert.match(JSON.stringify(listed), new RegExp(post));
+  const read = await client.callTool({ name: 'discord_read_forum_post', arguments: { post_id: post } });
+  assert.notEqual(read.isError, true); assert.match(JSON.stringify(read), /release alpha/);
+  const invalidCursor = await client.callTool({ name: 'discord_list_forum_posts', arguments: { forum_id: forum, before: 'invalid' } });
+  assert.equal(invalidCursor.isError, true);
+
   assert.equal((await f.request('/mcp', { headers: { Origin: 'https://evil.example' } })).status, 403);
   // fetch normalizes Host; use raw HTTP to exercise hostile Host headers.
   const status = await new Promise<number | undefined>((resolve, reject) => {

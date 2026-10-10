@@ -28,6 +28,14 @@ export class FakeDiscord implements DiscordApi {
   async channels() { return this.channelList; }
   async channel(id: string) { const c = this.channelList.find(c => c.id === id); if (!c) throw new Error('404'); return c; }
   async messages(id: string, limit: number, before?: string) { this.reads.push(id); return this.history.filter(m => !before || BigInt(m.id) < BigInt(before)).slice(0, limit).map(m => ({ ...m, channel_id: id })); }
+  threadList: APIChannel[] = [];
+  archivedList: APIChannel[] = [];
+  async activeThreads() { return this.threadList; }
+  async archivedThreads(id: string, limit: number, before?: string) {
+    const list = this.archivedList.filter(c => c.type === 11 && (!before || c.thread_metadata.archive_timestamp < before));
+    return { threads: list.slice(0, limit), has_more: list.length > limit };
+  }
+  async message(id: string, messageId: string) { return this.history.find(m => m.id === messageId) ?? null; }
   async send(id: string, content: string) { this.sends.push({ id, content }); return msg('300000000000000001', content, id); }
   async login(code: string) { return { id: code === 'other-code' ? OTHER : U, username: '社員' } as APIUser; }
 }

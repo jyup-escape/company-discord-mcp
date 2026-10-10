@@ -135,3 +135,38 @@ Discordアプリの認証戻り先 https://company-discord-mcp.desudesu2387.work
 本人による認証後、`discord_whoami`、`discord_list_channels`、`discord_send_message`、`discord_read_messages`を公開先のMCP経由で実行した。「アカウント共有」（1553000096961142814）へ社員向け導入案内を投稿し、履歴に同じ投稿IDが含まれることを確認した。投稿用の一時認証は処理終了時に失効した（HTTP 200）。
 
 投稿URL: https://discord.com/channels/1552927906638995466/1553000096961142814/1558366668387000340
+
+
+## フォーラム読取りの追加（2026-10-10）
+
+変更対象は `src/discord.ts`（Discord APIと権限確認）、`src/mcp.ts`（ツール公開）、`test/helpers.ts`、`test/service.test.ts`、`test/auth.test.ts`、README。認証経路、暗号化の保存形式、Cloudflareの保存対象に変更はない。
+
+### MCP操作
+
+| 操作 | 入力・出力 |
+| --- | --- |
+| `discord_list_channels` | 従来のチャンネルに加え、閲覧可能なフォーラム（type=15）を返す |
+| `discord_list_forum_posts` | `forum_id`、`archived`（既定false）、`limit`（1〜50、既定20）、`before`（保存日時）、`offset`（表示中の一覧の位置）。投稿ID、表題、保存状態、タグID、URL、件数、続きの位置を返す |
+| `discord_read_forum_post` | `post_id`、`limit`（1〜50、既定20）、`before`（メッセージID）。投稿情報、最初の本文 `starter`、直近の本文・返信 `messages`、`next_before` を返す。最初の本文が削除済みならstarterはnull |
+| `discord_read_messages` / `discord_search_messages` | フォーラムの投稿IDも受け付ける。検索は指定投稿の直近最大500件が対象 |
+
+フォーラム本体のIDではメッセージを取得できない。投稿一覧から投稿IDを選ぶ。表示中と保存済みは別の要求で取得する。表示中はID降順で `next_offset`、保存済みは保存日時降順で `next_before` を用いる。表示中の一覧が取得間に変化した場合、位置の移動による重複・欠落が生じる可能性がある。
+
+### Discord APIと権限
+
+- `GET /guilds/{guild_id}/threads/active`：表示中の投稿を取得し、対象フォーラムの公開スレッドへ限定する。他の親、他のサーバー、非公開スレッドを返さない。
+- `GET /channels/{forum_id}/threads/archived/public`：保存済みの公開投稿を保存日時でページ送りする。
+- `GET /channels/{post_id}/messages/{post_id}`：最初の本文。404のみ削除済みとして扱い、他の失敗を隠さない。
+- `GET /channels/{post_id}/messages`：本文・返信を取得する。
+
+本人の会社参加状態と、本人・Bot双方の親フォーラムのViewChannelおよびReadMessageHistoryを確認する。投稿のサーバーID、親ID、公開スレッド種別を検査する。ALLOWED_CHANNEL_IDSの制限は親フォーラムIDに適用する。スレッド自身の上書き権限を用いて親の拒否を回避する処理はない。フォーラム本体と公開投稿への書込みは拒否する。フォーラム以外のスレッドと非公開スレッドは引き続き拒否する。
+
+参照仕様: [Discordのスレッド仕様](https://github.com/discord/discord-api-docs/blob/main/developers/topics/threads.mdx)、[チャンネルAPI](https://github.com/discord/discord-api-docs/blob/main/developers/resources/channel.mdx)。
+
+### 検証
+
+サーバー試験40件、Node.jsとWorkersの型検査が成功した。読取り専用のOAuth接続から新しいMCPツールを呼び出す試験も実施した。親の権限拒否、Botの権限拒否、対象外の親・サーバー・非公開投稿、許可一覧、本文削除、返信と一覧のページ送り、書込み拒否を検証した。
+
+実際のDiscord APIと変更後の権限確認処理で「アイデア」（1553858110446108822）を取得し、表示中31件・保存済み1件を確認した。表示中の1件について最初の本文と直近メッセージを取得できた。本文内容は仕様書とGitへ保存していない。この実接続確認はローカルの変更後処理で実行しており、公開先の新しいツールへの本人OAuth再接続は実施していない。
+
+Cloudflareへ変更を反映し、公開先の稼働確認がHTTP 200を返すことを確認した。

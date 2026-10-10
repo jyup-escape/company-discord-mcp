@@ -27,9 +27,19 @@ export function createMcp(discord: DiscordService, auth: AuthInfo) {
       const member = await discord.eligible(userId);
       return { user_id: userId, name: member.nick ?? member.user.global_name ?? member.user.username, guild_id: discord.config.DISCORD_GUILD_ID, scopes: auth.scopes };
     }));
-  server.registerTool('discord_list_channels', { description: '本人とBotの両方が履歴を閲覧できる会社のテキスト・アナウンスチャンネルを列挙します。スレッド・DMは対象外です。', inputSchema: {}, annotations: read }, () =>
+  server.registerTool('discord_list_channels', { description: '本人とBotの両方が履歴を閲覧できる会社のテキスト・アナウンス・フォーラムを列挙します。フォーラムの投稿はdiscord_list_forum_postsで取得します。', inputSchema: {}, annotations: read }, () =>
     run('discord_list_channels', 'discord:read', undefined, () => discord.list(userId)));
-  server.registerTool('discord_read_messages', { description: '権限のあるチャンネルのメッセージを新しい順に取得します。beforeで過去へページ送りできます。', inputSchema: {
+  server.registerTool('discord_list_forum_posts', { description: 'フォーラム内の公開投稿を列挙します。archived=falseは表示中、trueは保存済みの投稿。本文はdiscord_read_forum_postで取得します。', inputSchema: {
+    forum_id: id, archived: z.boolean().default(false), limit: z.number().int().min(1).max(50).default(20),
+    before: z.iso.datetime({ offset: true }).optional().describe('保存済み投稿のnext_before'),
+    offset: z.number().int().min(0).max(100000).default(0).describe('表示中の投稿のnext_offset'),
+  }, annotations: read }, ({ forum_id, archived, limit, before, offset }) =>
+    run('discord_list_forum_posts', 'discord:read', forum_id, () => discord.listPosts(userId, forum_id, archived, limit, before, offset)));
+  server.registerTool('discord_read_forum_post', { description: 'フォーラムの投稿本文と直近の本文・返信を取得します。starterは最初の本文（削除済みならnull）。messagesは新しい順、beforeで過去へ進みます。', inputSchema: {
+    post_id: id, limit: z.number().int().min(1).max(50).default(20), before: id.optional(),
+  }, annotations: read }, ({ post_id, limit, before }) =>
+    run('discord_read_forum_post', 'discord:read', post_id, () => discord.readPost(userId, post_id, limit, before)));
+  server.registerTool('discord_read_messages', { description: '権限のあるチャンネルまたはフォーラム投稿の本文・返信を新しい順に取得します。beforeで過去へページ送りできます。', inputSchema: {
     channel_id: id, limit: z.number().int().min(1).max(50).default(20), before: id.optional(),
   }, annotations: read }, ({ channel_id, limit, before }) => run('discord_read_messages', 'discord:read', channel_id, () => discord.read(userId, channel_id, limit, before)));
   server.registerTool('discord_search_messages', { description: '指定チャンネルの直近最大500件をキーワード部分一致で検索。最大20件返却。全履歴の全文検索ではありません。next_beforeで続きから検索できます。', inputSchema: {
